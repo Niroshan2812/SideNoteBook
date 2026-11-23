@@ -230,15 +230,47 @@ export const storageService = {
   },
 
   async saveTabFolder(folder: TabFolder): Promise<void> {
+    await this.setState((prev) => {
+      const updatedNotes = folder.linkedNoteId
+        ? prev.notes.map((n) =>
+            n.id === folder.linkedNoteId
+              ? { ...n, linkedFolderId: folder.id, updatedAt: Date.now() }
+              : n
+          )
+        : prev.notes;
+
+      return {
+        ...prev,
+        notes: updatedNotes,
+        tabFolders: [folder, ...prev.tabFolders],
+      };
+    });
+  },
+
+  async updateTabFolder(
+    folderId: string,
+    patch: Partial<Omit<TabFolder, 'id' | 'createdAt'>>
+  ): Promise<void> {
     await this.setState((prev) => ({
       ...prev,
-      tabFolders: [folder, ...prev.tabFolders],
+      tabFolders: prev.tabFolders.map((f) =>
+        f.id === folderId
+          ? {
+              ...f,
+              ...patch,
+              updatedAt: Date.now(),
+            }
+          : f
+      ),
     }));
   },
 
   async deleteTabFolder(folderId: string): Promise<void> {
     await this.setState((prev) => ({
       ...prev,
+      notes: prev.notes.map((n) =>
+        n.linkedFolderId === folderId ? { ...n, linkedFolderId: undefined } : n
+      ),
       tabFolders: prev.tabFolders.filter((f) => f.id !== folderId),
     }));
   },

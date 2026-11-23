@@ -8,6 +8,8 @@ interface StickyHeaderProps {
   palette: ThemePalette;
   isCollapsed: boolean;
   isPinned: boolean;
+  isTabDrawerOpen: boolean;
+  tabFolderCount: number;
   opacity: number;
   isDragging: boolean;
   onStartDrag: (e: React.PointerEvent<HTMLElement>) => void;
@@ -19,6 +21,7 @@ interface StickyHeaderProps {
   onChangeTheme: (theme: StickyTheme) => void;
   onToggleCollapse: () => void;
   onTogglePin: () => void;
+  onToggleTabDrawer: () => void;
   onCycleOpacity: () => void;
   onClose: () => void;
 }
@@ -29,6 +32,8 @@ export function StickyHeader({
   palette,
   isCollapsed,
   isPinned,
+  isTabDrawerOpen,
+  tabFolderCount,
   opacity,
   isDragging,
   onStartDrag,
@@ -40,6 +45,7 @@ export function StickyHeader({
   onChangeTheme,
   onToggleCollapse,
   onTogglePin,
+  onToggleTabDrawer,
   onCycleOpacity,
   onClose,
 }: StickyHeaderProps) {
@@ -111,8 +117,31 @@ export function StickyHeader({
         />
       </div>
 
-      {/* Right Controls: Theme, Opacity, Pin, Window-Shade Collapse, Close */}
+      {/* Right Controls: Tab Folders, Theme, Opacity, Pin, Window-Shade Collapse, Close */}
       <div className="flex items-center gap-0.5" data-no-drag="true">
+        {/* Save / Browse Tab Folders Button */}
+        <button
+          type="button"
+          onClick={() => {
+            onToggleTabDrawer();
+            setShowThemePicker(false);
+            setShowNoteList(false);
+          }}
+          style={{
+            color: palette.textPrimary,
+            backgroundColor: isTabDrawerOpen
+              ? palette.buttonHover
+              : 'transparent',
+          }}
+          className="px-1.5 h-6 flex items-center justify-center gap-0.5 rounded text-[11px] font-semibold transition hover:bg-black/10"
+          title="Save open tabs into a named folder or reopen saved folders"
+        >
+          <span>📁</span>
+          {tabFolderCount > 0 && (
+            <span className="text-[10px] opacity-80">{tabFolderCount}</span>
+          )}
+        </button>
+
         {/* Color Theme Button */}
         <button
           type="button"

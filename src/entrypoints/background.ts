@@ -1,5 +1,10 @@
 import { storageService } from '@/services/storageService';
 import { formatQuoteSnippet } from '@/services/contextCapture';
+import {
+  RestoreMode,
+  SaveTabsOptions,
+  tabFolderService,
+} from '@/services/tabFolderService';
 
 const MENU_QUOTE_ID = 'sidenotebook-add-quote';
 const MENU_CITE_ID = 'sidenotebook-add-citation';
@@ -59,7 +64,7 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'PING_STORAGE') {
     storageService.getState().then((state) => {
       sendResponse({ ok: true, state });
@@ -71,6 +76,49 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     storageService.toggleVisibility().then((state) => {
       sendResponse({ ok: true, isVisible: state.uiState.isVisible });
     });
+    return true;
+  }
+
+  if (message?.type === 'GET_OPEN_TABS') {
+    tabFolderService
+      .getOpenTabs(sender.tab?.windowId)
+      .then((tabs) => sendResponse({ ok: true, tabs }))
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+    return true;
+  }
+
+  if (message?.type === 'SAVE_TAB_FOLDER') {
+    tabFolderService
+      .saveTabsToFolder(message.options as SaveTabsOptions)
+      .then((folder) => sendResponse({ ok: true, folder }))
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+    return true;
+  }
+
+  if (message?.type === 'RESTORE_TAB_FOLDER') {
+    tabFolderService
+      .restoreTabFolder(
+        message.folderId as string,
+        (message.mode as RestoreMode) || 'tabGroup'
+      )
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+    return true;
+  }
+
+  if (message?.type === 'OPEN_SINGLE_TAB') {
+    tabFolderService
+      .openSingleTab(message.url as string)
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+    return true;
+  }
+
+  if (message?.type === 'ADD_CURRENT_TAB_TO_FOLDER') {
+    tabFolderService
+      .addActiveTabToFolder(message.folderId as string, sender.tab?.windowId)
+      .then((added) => sendResponse({ ok: true, added }))
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;
   }
 

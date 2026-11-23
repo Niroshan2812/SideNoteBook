@@ -20,6 +20,7 @@ export function FloatingStickyApp() {
   return (
     <StickyWindow
       notes={state.notes}
+      tabFolders={state.tabFolders}
       activeNote={activeNote}
       uiState={state.uiState}
       onUpdateGeometry={(geometry) =>
@@ -40,6 +41,7 @@ export function FloatingStickyApp() {
       }
       onUpdateNote={(noteId, patch) => storageService.updateNote(noteId, patch)}
       onDeleteNote={(noteId) => storageService.deleteNote(noteId)}
+      onDeleteFolder={(folderId) => storageService.deleteTabFolder(folderId)}
     />
   );
 }

@@ -4,14 +4,18 @@ import {
   StickyTheme,
   StickyUIState,
   StickyWindowGeometry,
+  TabFolder,
 } from '@/types';
 import { STICKY_THEMES } from './themeConfig';
 import { StickyHeader } from './StickyHeader';
 import { NoteEditor } from './NoteEditor';
+import { SaveTabsModal } from '@/components/tabs/SaveTabsModal';
+import { FolderList } from '@/components/tabs/FolderList';
 import { useDraggableWindow } from '@/hooks/useDraggableWindow';
 
 interface StickyWindowProps {
   notes: Note[];
+  tabFolders: TabFolder[];
   activeNote: Note;
   uiState: StickyUIState;
   onUpdateGeometry: (geometry: StickyWindowGeometry) => void;
@@ -23,12 +27,14 @@ interface StickyWindowProps {
     patch: Partial<Omit<Note, 'id' | 'createdAt'>>
   ) => void;
   onDeleteNote: (noteId: string) => void;
+  onDeleteFolder: (folderId: string) => void;
 }
 
 const OPACITY_STEPS = [0.98, 0.85, 0.68];
 
 export function StickyWindow({
   notes,
+  tabFolders,
   activeNote,
   uiState,
   onUpdateGeometry,
@@ -37,9 +43,14 @@ export function StickyWindow({
   onSelectNote,
   onUpdateNote,
   onDeleteNote,
+  onDeleteFolder,
 }: StickyWindowProps) {
   const palette = STICKY_THEMES[activeNote.theme] || STICKY_THEMES.yellow;
   const [titleDraft, setTitleDraft] = useState(activeNote.title);
+  const [tabDrawerMode, setTabDrawerMode] = useState<'none' | 'save' | 'list'>(
+    'none'
+  );
+  const [drawerNotice, setDrawerNotice] = useState<string | null>(null);
   const titleSaveTimerRef = useRef<number | null>(null);
   const activeIdRef = useRef(activeNote.id);
 
@@ -94,6 +105,10 @@ export function StickyWindow({
     onUpdateUIState({ opacity: nextOpacity });
   };
 
+  const linkedFolder = activeNote.linkedFolderId
+    ? tabFolders.find((f) => f.id === activeNote.linkedFolderId)
+    : undefined;
+
   const wordCount = activeNote.content.trim()
     ? activeNote.content.trim().split(/\s+/).length
     : 0;
@@ -128,13 +143,21 @@ export function StickyWindow({
         palette={palette}
         isCollapsed={uiState.isCollapsed}
         isPinned={uiState.isPinned}
+        isTabDrawerOpen={tabDrawerMode !== 'none'}
+        tabFolderCount={tabFolders.length}
         opacity={uiState.opacity}
         isDragging={isDragging}
         onStartDrag={startDrag}
         onPointerMove={onPointerMove}
         onEndDrag={endInteraction}
-        onCreateNote={onCreateNote}
-        onSelectNote={onSelectNote}
+        onCreateNote={() => {
+          setTabDrawerMode('none');
+          onCreateNote();
+        }}
+        onSelectNote={(noteId) => {
+          setTabDrawerMode('none');
+          onSelectNote(noteId);
+        }}
         onDeleteNote={onDeleteNote}
         onChangeTheme={(theme: StickyTheme) =>
           onUpdateNote(activeNote.id, { theme })
@@ -143,17 +166,85 @@ export function StickyWindow({
           onUpdateUIState({ isCollapsed: !uiState.isCollapsed })
         }
         onTogglePin={() => onUpdateUIState({ isPinned: !uiState.isPinned })}
+        onToggleTabDrawer={() => {
+          if (uiState.isCollapsed) {
+            onUpdateUIState({ isCollapsed: false });
+          }
+          setTabDrawerMode((prev) => (prev === 'none' ? 'list' : 'none'));
+        }}
         onCycleOpacity={handleCycleOpacity}
         onClose={() => onUpdateUIState({ isVisible: false })}
       />
 
-      {/* Note Body (Hidden when Window-Shaded / Collapsed) */}
-      {!uiState.isCollapsed && (
+      {/* Note Body or In-Sticky Tab Folder Drawer */}
+      {!uiState.isCollapsed && tabDrawerMode === 'save' && (
+        <SaveTabsModal
+          activeNoteId={activeNote.id}
+          activeNoteTitle={activeNote.title}
+          palette={palette}
+          onSaved={(savedName) => {
+            setDrawerNotice(`Saved folder "${savedName}"!`);
+            setTabDrawerMode('list');
+            window.setTimeout(() => setDrawerNotice(null), 2500);
+          }}
+          onCancel={() => setTabDrawerMode('list')}
+        />
+      )}
+
+      {!uiState.isCollapsed && tabDrawerMode === 'list' && (
+        <div className="flex-1 flex flex-col min-h-0 p-2.5 gap-2 overflow-y-auto">
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setTabDrawerMode('save')}
+              className="flex-1 py-1.5 px-2.5 rounded bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs transition"
+            >
+              + Save Open Tabs to Folder
+            </button>
+            <button
+              type="button"
+              onClick={() => setTabDrawerMode('none')}
+              style={{
+                backgroundColor: palette.buttonHover,
+                color: palette.textPrimary,
+              }}
+              className="py-1.5 px-2.5 rounded text-xs font-semibold"
+            >
+              Back to Note
+            </button>
+          </div>
+
+          {drawerNotice && (
+            <div
+              style={{
+                backgroundColor: palette.headerBg,
+                borderColor: palette.border,
+              }}
+              className="px-2.5 py-1 rounded border text-[11px] font-semibold"
+            >
+              ✓ {drawerNotice}
+            </div>
+          )}
+
+          <FolderList
+            folders={tabFolders}
+            notes={notes}
+            palette={palette}
+            onDeleteFolder={onDeleteFolder}
+            onOpenLinkedNote={(noteId) => {
+              onSelectNote(noteId);
+              setTabDrawerMode('none');
+            }}
+          />
+        </div>
+      )}
+
+      {!uiState.isCollapsed && tabDrawerMode === 'none' && (
         <div className="flex-1 flex flex-col min-h-0 relative">
-          {/* Editable Note Title */}
+          {/* Editable Note Title + Linked Folder Indicator */}
           <div
             style={{ borderBottom: `1px solid ${palette.divider}` }}
-            className="px-3 pt-2 pb-1"
+            className="px-3 pt-2 pb-1 flex items-center justify-between gap-2"
           >
             <input
               type="text"
@@ -165,8 +256,22 @@ export function StickyWindow({
                 color: palette.textPrimary,
                 backgroundColor: 'transparent',
               }}
-              className="w-full text-sm font-bold focus:outline-none placeholder:opacity-50"
+              className="flex-1 min-w-0 text-sm font-bold focus:outline-none placeholder:opacity-50"
             />
+            {linkedFolder && (
+              <button
+                type="button"
+                onClick={() => setTabDrawerMode('list')}
+                style={{
+                  backgroundColor: palette.buttonHover,
+                  color: palette.textSecondary,
+                }}
+                className="px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 max-w-[110px] truncate"
+                title={`Linked Tab Folder: ${linkedFolder.name} (${linkedFolder.tabs.length} tabs)`}
+              >
+                📁 {linkedFolder.name}
+              </button>
+            )}
           </div>
 
           {/* Phase 3: Research Note Editor + Context Capture */}
