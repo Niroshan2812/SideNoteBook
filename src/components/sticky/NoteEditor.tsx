@@ -407,6 +407,25 @@ export function NoteEditor({ note, palette, onSaveContent }: NoteEditorProps) {
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              navigator.clipboard?.writeText(
+                `# ${note.title || 'Untitled Note'}\n\n${draft}`
+              );
+              showFlash('Copied Markdown');
+            }}
+            style={{
+              backgroundColor: palette.buttonHover,
+              color: palette.textPrimary,
+            }}
+            className="px-1.5 py-0.5 rounded text-[10.5px] font-semibold hover:opacity-85 transition"
+            title="Copy note as Markdown"
+          >
+            📋
+          </button>
+
+          <button
+            type="button"
             onClick={() => setMode((m) => (m === 'edit' ? 'preview' : 'edit'))}
             style={{
               backgroundColor:

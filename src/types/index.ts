@@ -65,13 +65,19 @@ export interface StickyUIState {
 
 export interface CloudSyncMetadata {
   email?: string;
+  userId?: string;
   lastSyncedAt?: number;
   driveFileId?: string;
+  customClientId?: string;
+  autoSync?: boolean;
   encryptionEnabled: boolean;
+  encryptionMode?: 'email' | 'passphrase';
 }
 
 export interface EncryptedVault {
   version: number;
+  mode: 'email' | 'passphrase';
+  emailHash: string;
   iv: string;
   salt: string;
   ciphertext: string;

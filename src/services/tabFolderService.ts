@@ -29,6 +29,37 @@ function isExtensionContext(): boolean {
   );
 }
 
+async function resolveTargetNormalWindowId(
+  explicitWindowId?: number
+): Promise<number | undefined> {
+  if (typeof explicitWindowId === 'number') {
+    const win = await chrome.windows.get(explicitWindowId).catch(() => null);
+    if (win?.type === 'normal') return win.id;
+  }
+
+  if (typeof window !== 'undefined' && window.location?.search) {
+    const paramId = Number(
+      new URLSearchParams(window.location.search).get('targetWindowId')
+    );
+    if (Number.isFinite(paramId) && paramId > 0) {
+      const win = await chrome.windows.get(paramId).catch(() => null);
+      if (win?.type === 'normal') return win.id;
+    }
+  }
+
+  const current = await chrome.windows.getCurrent().catch(() => null);
+  if (current?.type === 'normal' && typeof current.id === 'number') {
+    return current.id;
+  }
+
+  const normalWindows = await chrome.windows
+    .getAll({ windowTypes: ['normal'] })
+    .catch(() => []);
+  const focusedNormal =
+    normalWindows.find((w) => w.focused) || normalWindows[0];
+  return focusedNormal?.id;
+}
+
 async function findBookmarksBarId(): Promise<string | null> {
   if (!chrome.bookmarks) return null;
   const tree = await chrome.bookmarks.getTree();
@@ -55,8 +86,11 @@ export const tabFolderService = {
       return response?.tabs ?? [];
     }
 
+    const targetWindowId = await resolveTargetNormalWindowId(windowId);
     const queryInfo: chrome.tabs.QueryInfo =
-      typeof windowId === 'number' ? { windowId } : { currentWindow: true };
+      typeof targetWindowId === 'number'
+        ? { windowId: targetWindowId }
+        : { currentWindow: true };
 
     const tabs = await chrome.tabs.query(queryInfo);
 
@@ -167,7 +201,10 @@ export const tabFolderService = {
 
       // Keep browser window open by creating a fresh tab if all tabs are being closed
       if (remainingTabs.length === 0) {
-        await chrome.tabs.create({ active: true });
+        await chrome.tabs.create({
+          windowId: firstTab?.windowId,
+          active: true,
+        });
       }
 
       await chrome.tabs.remove(tabIdsToClose);
@@ -198,10 +235,12 @@ export const tabFolderService = {
     if (mode === 'newWindow') {
       await chrome.windows.create({ url: urls, focused: true });
     } else {
+      const targetWindowId = await resolveTargetNormalWindowId();
       const createdTabIds: number[] = [];
       for (let i = 0; i < urls.length; i++) {
         const created = await chrome.tabs.create({
           url: urls[i],
+          windowId: targetWindowId,
           active: i === 0,
         });
         if (typeof created.id === 'number') {
@@ -218,6 +257,10 @@ export const tabFolderService = {
         try {
           const groupId = await chrome.tabs.group({
             tabIds: createdTabIds as [number, ...number[]],
+            createProperties:
+              typeof targetWindowId === 'number'
+                ? { windowId: targetWindowId }
+                : undefined,
           });
           await chrome.tabGroups.update(groupId, {
             title: folder.name,
@@ -227,6 +270,12 @@ export const tabFolderService = {
         } catch (err) {
           console.warn('[SideNoteBook] Tab group creation warning:', err);
         }
+      }
+
+      if (typeof targetWindowId === 'number') {
+        await chrome.windows
+          .update(targetWindowId, { focused: true })
+          .catch(() => undefined);
       }
     }
 
@@ -250,7 +299,13 @@ export const tabFolderService = {
       await chrome.runtime.sendMessage({ type: 'OPEN_SINGLE_TAB', url });
       return;
     }
-    await chrome.tabs.create({ url, active: true });
+    const targetWindowId = await resolveTargetNormalWindowId();
+    await chrome.tabs.create({ url, windowId: targetWindowId, active: true });
+    if (typeof targetWindowId === 'number') {
+      await chrome.windows
+        .update(targetWindowId, { focused: true })
+        .catch(() => undefined);
+    }
   },
 
   async addActiveTabToFolder(
@@ -265,9 +320,10 @@ export const tabFolderService = {
       return Boolean(res?.added);
     }
 
+    const targetWindowId = await resolveTargetNormalWindowId(windowId);
     const queryInfo: chrome.tabs.QueryInfo =
-      typeof windowId === 'number'
-        ? { windowId, active: true }
+      typeof targetWindowId === 'number'
+        ? { windowId: targetWindowId, active: true }
         : { currentWindow: true, active: true };
 
     const [activeTab] = await chrome.tabs.query(queryInfo);

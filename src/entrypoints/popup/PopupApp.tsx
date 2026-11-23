@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useSyncedStorage } from '@/hooks/useSyncedStorage';
 import { StickyTheme } from '@/types';
 import { SaveTabsModal } from '@/components/tabs/SaveTabsModal';
 import { FolderList } from '@/components/tabs/FolderList';
+import { exportService } from '@/services/exportService';
 
 const THEMES: StickyTheme[] = ['yellow', 'blue', 'green', 'pink', 'purple', 'dark'];
 
@@ -11,11 +12,32 @@ export function PopupApp() {
   const [activeTab, setActiveTab] = useState<'folders' | 'notes'>('folders');
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [newNoteTitle, setNewNoteTitle] = useState('');
+  const [search, setSearch] = useState('');
   const [banner, setBanner] = useState<string | null>(null);
+
+  const query = search.trim().toLowerCase();
+
+  const filteredFolders = useMemo(() => {
+    if (!query) return state.tabFolders;
+    return state.tabFolders.filter(
+      (f) =>
+        f.name.toLowerCase().includes(query) ||
+        f.tabs.some((t) => t.title.toLowerCase().includes(query))
+    );
+  }, [state.tabFolders, query]);
+
+  const filteredNotes = useMemo(() => {
+    if (!query) return state.notes;
+    return state.notes.filter(
+      (n) =>
+        n.title.toLowerCase().includes(query) ||
+        n.content.toLowerCase().includes(query)
+    );
+  }, [state.notes, query]);
 
   if (!isLoaded) {
     return (
-      <div className="w-[370px] p-4 text-xs text-slate-400">
+      <div className="w-[380px] p-4 text-xs text-slate-400">
         Loading SideNoteBook...
       </div>
     );
@@ -36,52 +58,122 @@ export function PopupApp() {
     setNewNoteTitle('');
   };
 
+  const handleOpenSidePanel = async () => {
+    if (typeof chrome !== 'undefined' && chrome.sidePanel && chrome.windows) {
+      try {
+        const win = await chrome.windows.getCurrent();
+        if (typeof win.id === 'number') {
+          await chrome.sidePanel.open({ windowId: win.id });
+          window.close();
+          return;
+        }
+      } catch (err) {
+        console.warn('Could not open Side Panel:', err);
+      }
+    }
+  };
+
+  const handleOpenPopoutWindow = async () => {
+    if (typeof chrome !== 'undefined' && chrome.windows) {
+      const currentWin = await chrome.windows.getCurrent().catch(() => null);
+      const baseUrl = chrome.runtime.getURL('sidepanel.html');
+      const targetUrl =
+        currentWin?.type === 'normal' && typeof currentWin.id === 'number'
+          ? `${baseUrl}?targetWindowId=${currentWin.id}`
+          : baseUrl;
+
+      await chrome.windows.create({
+        url: targetUrl,
+        type: 'popup',
+        width: 440,
+        height: 640,
+      });
+      window.close();
+    }
+  };
+
   return (
-    <div className="w-[380px] p-3.5 bg-slate-900 text-slate-100 font-sans space-y-3">
+    <div className="w-[390px] p-3.5 bg-slate-900 text-slate-100 font-sans space-y-3">
       {/* Top Bar */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+      <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 gap-2">
         <div>
           <h1 className="text-sm font-bold text-amber-300">SideNoteBook</h1>
           <p className="text-[11px] text-slate-400">
             Floating Notes & Research Tab Folders
           </p>
         </div>
-        <button
-          onClick={() => storageService.toggleVisibility()}
-          className={`px-2.5 py-1 rounded text-xs font-semibold transition ${
-            state.uiState.isVisible
-              ? 'bg-amber-400 text-slate-950 hover:bg-amber-300'
-              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-          }`}
-        >
-          {state.uiState.isVisible ? 'Sticky: ON' : 'Sticky: OFF'}
-        </button>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleOpenSidePanel}
+            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium border border-slate-700"
+            title="Open full Workspace in Chrome Side Panel"
+          >
+            ◫ Panel
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenPopoutWindow}
+            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium border border-slate-700"
+            title="Open detached floating window (works on PDFs & chrome:// pages)"
+          >
+            ❐ Popout
+          </button>
+          <button
+            onClick={() => storageService.toggleVisibility()}
+            className={`px-2 py-1 rounded text-[11px] font-semibold transition ${
+              state.uiState.isVisible
+                ? 'bg-amber-400 text-slate-950 hover:bg-amber-300'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+            title="Toggle in-page sticky note (Alt+N)"
+          >
+            {state.uiState.isVisible ? 'Sticky: ON' : 'Sticky: OFF'}
+          </button>
+        </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="grid grid-cols-2 gap-1 p-1 rounded-md bg-slate-800/80 text-xs font-semibold">
-        <button
-          type="button"
-          onClick={() => setActiveTab('folders')}
-          className={`py-1.5 rounded transition ${
-            activeTab === 'folders'
-              ? 'bg-slate-700 text-amber-300 shadow'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          📁 Tab Folders ({state.tabFolders.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('notes')}
-          className={`py-1.5 rounded transition ${
-            activeTab === 'notes'
-              ? 'bg-slate-700 text-amber-300 shadow'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          📝 Sticky Notes ({state.notes.length})
-        </button>
+      {/* Navigation Tabs + Search */}
+      <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-1 p-1 rounded-md bg-slate-800/80 text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setActiveTab('folders')}
+            className={`py-1.5 rounded transition ${
+              activeTab === 'folders'
+                ? 'bg-slate-700 text-amber-300 shadow'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            📁 Tab Folders ({state.tabFolders.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('notes')}
+            className={`py-1.5 rounded transition ${
+              activeTab === 'notes'
+                ? 'bg-slate-700 text-amber-300 shadow'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            📝 Sticky Notes ({state.notes.length})
+          </button>
+        </div>
+
+        {!showSaveModal && (
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={
+              activeTab === 'folders'
+                ? 'Filter saved folders or tabs...'
+                : 'Search sticky notes...'
+            }
+            className="w-full px-2.5 py-1.5 rounded bg-slate-800/70 border border-slate-700/80 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+          />
+        )}
       </div>
 
       {banner && (
@@ -117,7 +209,7 @@ export function PopupApp() {
 
               <div className="max-h-72 overflow-y-auto pr-0.5">
                 <FolderList
-                  folders={state.tabFolders}
+                  folders={filteredFolders}
                   notes={state.notes}
                   onDeleteFolder={(folderId) =>
                     storageService.deleteTabFolder(folderId)
@@ -155,8 +247,8 @@ export function PopupApp() {
             </button>
           </form>
 
-          <div className="space-y-1.5 max-h-64 overflow-y-auto pr-0.5">
-            {state.notes.map((note) => {
+          <div className="space-y-1.5 max-h-60 overflow-y-auto pr-0.5">
+            {filteredNotes.map((note) => {
               const isActive = note.id === state.uiState.activeNoteId;
               const linkedFolder = note.linkedFolderId
                 ? state.tabFolders.find((f) => f.id === note.linkedFolderId)
@@ -192,6 +284,17 @@ export function PopupApp() {
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        exportService.downloadNoteMarkdown(note, linkedFolder);
+                      }}
+                      className="px-1.5 py-0.5 rounded hover:bg-slate-700 text-slate-300 text-[10px]"
+                      title="Export note as .md"
+                    >
+                      ⬇
+                    </button>
                     <select
                       value={note.theme}
                       onClick={(e) => e.stopPropagation()}
@@ -229,9 +332,33 @@ export function PopupApp() {
       )}
 
       {/* Footer */}
-      <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-        <span>Toggle sticky: Alt+N</span>
-        <span>Phase 4 • Tab Folders</span>
+      <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400 gap-2">
+        <button
+          type="button"
+          onClick={handleOpenSidePanel}
+          className="truncate hover:text-amber-300"
+          title="Open Cloud Sync in Side Panel"
+        >
+          {state.cloudSync.email
+            ? `☁ ${state.cloudSync.email}`
+            : '☁ Connect Gmail (Drive Sync)'}
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            await storageService.updateUIState({
+              isVisible: true,
+              isCollapsed: false,
+              isPinned: false,
+              geometry: { x: 40, y: 60, width: 340, height: 380 },
+            });
+            setBanner('Sticky window centered & reset');
+            window.setTimeout(() => setBanner(null), 2000);
+          }}
+          className="hover:text-amber-300 underline shrink-0"
+        >
+          Reset position
+        </button>
       </div>
     </div>
   );
