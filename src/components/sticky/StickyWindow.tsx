@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Note,
   StickyTheme,
@@ -7,6 +7,7 @@ import {
 } from '@/types';
 import { STICKY_THEMES } from './themeConfig';
 import { StickyHeader } from './StickyHeader';
+import { NoteEditor } from './NoteEditor';
 import { useDraggableWindow } from '@/hooks/useDraggableWindow';
 
 interface StickyWindowProps {
@@ -38,6 +39,36 @@ export function StickyWindow({
   onDeleteNote,
 }: StickyWindowProps) {
   const palette = STICKY_THEMES[activeNote.theme] || STICKY_THEMES.yellow;
+  const [titleDraft, setTitleDraft] = useState(activeNote.title);
+  const titleSaveTimerRef = useRef<number | null>(null);
+  const activeIdRef = useRef(activeNote.id);
+
+  useEffect(() => {
+    if (activeIdRef.current !== activeNote.id) {
+      activeIdRef.current = activeNote.id;
+      setTitleDraft(activeNote.title);
+    }
+  }, [activeNote.id, activeNote.title]);
+
+  useEffect(() => {
+    return () => {
+      if (titleSaveTimerRef.current) {
+        window.clearTimeout(titleSaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleTitleChange = (nextTitle: string) => {
+    setTitleDraft(nextTitle);
+    if (titleSaveTimerRef.current) {
+      window.clearTimeout(titleSaveTimerRef.current);
+    }
+    const targetId = activeNote.id;
+    titleSaveTimerRef.current = window.setTimeout(() => {
+      onUpdateNote(targetId, { title: nextTitle });
+      titleSaveTimerRef.current = null;
+    }, 180);
+  };
 
   const {
     liveGeo,
@@ -62,6 +93,10 @@ export function StickyWindow({
       OPACITY_STEPS[(currentIndex + 1) % OPACITY_STEPS.length];
     onUpdateUIState({ opacity: nextOpacity });
   };
+
+  const wordCount = activeNote.content.trim()
+    ? activeNote.content.trim().split(/\s+/).length
+    : 0;
 
   return (
     <div
@@ -122,10 +157,9 @@ export function StickyWindow({
           >
             <input
               type="text"
-              value={activeNote.title}
-              onChange={(e) =>
-                onUpdateNote(activeNote.id, { title: e.target.value })
-              }
+              value={titleDraft}
+              onChange={(e) => handleTitleChange(e.target.value)}
+              onBlur={() => onUpdateNote(activeNote.id, { title: titleDraft })}
               placeholder="Note title..."
               style={{
                 color: palette.textPrimary,
@@ -135,18 +169,13 @@ export function StickyWindow({
             />
           </div>
 
-          {/* Editable Note Content Area */}
-          <textarea
-            value={activeNote.content}
-            onChange={(e) =>
-              onUpdateNote(activeNote.id, { content: e.target.value })
+          {/* Phase 3: Research Note Editor + Context Capture */}
+          <NoteEditor
+            note={activeNote}
+            palette={palette}
+            onSaveContent={(noteId, content) =>
+              onUpdateNote(noteId, { content })
             }
-            placeholder="Write your research notes here..."
-            style={{
-              color: palette.textPrimary,
-              backgroundColor: 'transparent',
-            }}
-            className="flex-1 w-full p-3 text-[13px] leading-relaxed resize-none focus:outline-none placeholder:opacity-50"
           />
 
           {/* Bottom Status Bar + Corner Resize Grip */}
@@ -159,10 +188,10 @@ export function StickyWindow({
           >
             <span>
               {uiState.isPinned
-                ? '📌 Position Locked'
-                : `${Math.round(liveGeo.width)}×${Math.round(liveGeo.height)} • Drag anywhere`}
+                ? `📌 Locked • ${wordCount} words`
+                : `${wordCount} words • ${Math.round(liveGeo.width)}×${Math.round(liveGeo.height)}`}
             </span>
-            <span>Alt+N to toggle</span>
+            <span className="pr-3">Alt+N to toggle</span>
           </div>
 
           {/* Right Edge Resize Handle */}

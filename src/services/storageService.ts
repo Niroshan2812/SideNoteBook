@@ -164,6 +164,52 @@ export const storageService = {
     }));
   },
 
+  async appendToActiveNote(
+    snippet: string,
+    opts?: { sourceUrl?: string; sourceTitle?: string }
+  ): Promise<void> {
+    const state = await this.getState();
+    const targetNote =
+      state.notes.find((n) => n.id === state.uiState.activeNoteId) ||
+      state.notes[0];
+
+    if (!targetNote) {
+      await this.createNote({
+        title: opts?.sourceTitle || 'Research Quote',
+        content: snippet,
+      });
+      return;
+    }
+
+    const separator =
+      targetNote.content.trim().length > 0
+        ? targetNote.content.endsWith('\n')
+          ? '\n'
+          : '\n\n'
+        : '';
+
+    await this.setState((prev) => ({
+      ...prev,
+      notes: prev.notes.map((n) =>
+        n.id === targetNote.id
+          ? {
+              ...n,
+              content: `${n.content}${separator}${snippet}`,
+              sourceUrl: opts?.sourceUrl ?? n.sourceUrl,
+              sourceTitle: opts?.sourceTitle ?? n.sourceTitle,
+              updatedAt: Date.now(),
+            }
+          : n
+      ),
+      uiState: {
+        ...prev.uiState,
+        activeNoteId: targetNote.id,
+        isVisible: true,
+        isCollapsed: false,
+      },
+    }));
+  },
+
   async deleteNote(noteId: string): Promise<void> {
     await this.setState((prev) => {
       const remaining = prev.notes.filter((n) => n.id !== noteId);
