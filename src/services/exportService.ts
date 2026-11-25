@@ -1,5 +1,9 @@
 import { Note, SideNoteBookStorage, TabFolder } from '@/types';
 import { storageService } from '@/services/storageService';
+import {
+  sanitizeImportedFolders,
+  sanitizeImportedNotes,
+} from '@/services/security';
 
 function sanitizeFilename(name: string): string {
   return (
@@ -100,12 +104,12 @@ export const exportService = {
     const existingNoteIds = new Set(current.notes.map((n) => n.id));
     const existingFolderIds = new Set(current.tabFolders.map((f) => f.id));
 
-    const newNotes = (parsed.notes || []).filter(
-      (n) => n && typeof n.id === 'string' && !existingNoteIds.has(n.id)
-    );
-    const newFolders = (parsed.tabFolders || []).filter(
-      (f) => f && typeof f.id === 'string' && !existingFolderIds.has(f.id)
-    );
+    const newNotes = sanitizeImportedNotes(parsed.notes).filter(
+        (n) => !existingNoteIds.has(n.id)
+      );
+    const newFolders = sanitizeImportedFolders(parsed.tabFolders).filter(
+        (f) => !existingFolderIds.has(f.id)
+      );
 
     await storageService.setState((prev) => ({
       ...prev,

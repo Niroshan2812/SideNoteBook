@@ -1,4 +1,5 @@
 import { storageService } from '@/services/storageService';
+import { isSafeTabUrl } from '@/services/security';
 import { SavedTab, TabFolder, TabGroupColor } from '@/types';
 
 export interface OpenTabCandidate {
@@ -230,7 +231,8 @@ export const tabFolderService = {
     const folder = state.tabFolders.find((f) => f.id === folderId);
     if (!folder || folder.tabs.length === 0) return;
 
-    const urls = folder.tabs.map((t) => t.url);
+    const urls = folder.tabs.map((t) => t.url).filter(isSafeTabUrl);
+    if (urls.length === 0) return;
 
     if (mode === 'newWindow') {
       await chrome.windows.create({ url: urls, focused: true });
@@ -295,6 +297,9 @@ export const tabFolderService = {
   },
 
   async openSingleTab(url: string): Promise<void> {
+    if (!isSafeTabUrl(url)) {
+      throw new Error('Blocked unsafe tab URL scheme.');
+    }
     if (!isExtensionContext()) {
       await chrome.runtime.sendMessage({ type: 'OPEN_SINGLE_TAB', url });
       return;

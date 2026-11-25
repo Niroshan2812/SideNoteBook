@@ -1,4 +1,8 @@
 import { cryptoService, VaultPayload } from '@/services/cryptoService';
+import {
+  sanitizeImportedFolders,
+  sanitizeImportedNotes,
+} from '@/services/security';
 import { storageService } from '@/services/storageService';
 import { EncryptedVault, Note, TabFolder } from '@/types';
 
@@ -45,11 +49,13 @@ async function getAccessToken(customClientId?: string): Promise<string> {
     }
 
     const redirectUri = chrome.identity.getRedirectURL();
+    const expectedState = crypto.randomUUID();
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     authUrl.searchParams.set('client_id', customClientId.trim());
     authUrl.searchParams.set('response_type', 'token');
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('scope', OAUTH_SCOPES.join(' '));
+    authUrl.searchParams.set('state', expectedState);
     authUrl.searchParams.set('prompt', 'consent');
 
     const responseUrl = await chrome.identity.launchWebAuthFlow({
@@ -64,6 +70,9 @@ async function getAccessToken(customClientId?: string): Promise<string> {
     const hashParams = new URLSearchParams(
       new URL(responseUrl).hash.replace(/^#/, '')
     );
+    if (hashParams.get('state') !== expectedState) {
+      throw new Error('OAuth state mismatch — please try signing in again.');
+    }
     const accessToken = hashParams.get('access_token');
     const expiresIn = parseInt(hashParams.get('expires_in') || '3500', 10);
 
@@ -93,7 +102,7 @@ async function getAccessToken(customClientId?: string): Promise<string> {
         reject(
           new Error(
             chrome.runtime.lastError?.message ||
-              'Failed to authenticate with Gmail.'
+            'Failed to authenticate with Gmail.'
           )
         );
         return;
@@ -243,7 +252,12 @@ export const driveSyncService = {
 
   async disconnectGmail(): Promise<void> {
     if (cachedWebFlowToken && typeof chrome !== 'undefined' && chrome.identity) {
+      const tokenToRevoke = cachedWebFlowToken.token;
       cachedWebFlowToken = null;
+      await fetch(
+        `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(tokenToRevoke)}`,
+        { method: 'POST' }
+      ).catch(() => undefined);
     } else if (typeof chrome !== 'undefined' && chrome.identity) {
       await new Promise<void>((resolve) => {
         chrome.identity.getAuthToken({ interactive: false }, (token) => {
@@ -362,13 +376,16 @@ export const driveSyncService = {
       passphrase: opts?.passphrase,
     });
 
+    const safeRemoteNotes = sanitizeImportedNotes(decrypted.notes);
+    const safeRemoteFolders = sanitizeImportedFolders(decrypted.tabFolders);
+
     const mergedNotes = mergeByUpdatedAt<Note>(
       state.notes,
-      decrypted.notes || []
+      safeRemoteNotes
     );
     const mergedFolders = mergeByUpdatedAt<TabFolder>(
       state.tabFolders,
-      decrypted.tabFolders || []
+      safeRemoteFolders
     );
 
     await storageService.setState((prev) => ({

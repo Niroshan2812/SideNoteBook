@@ -2,6 +2,10 @@ import React, { useRef, useState } from 'react';
 import { EncryptedVault, SideNoteBookStorage } from '@/types';
 import { cryptoService } from '@/services/cryptoService';
 import { driveSyncService } from '@/services/driveSyncService';
+import {
+  sanitizeImportedFolders,
+  sanitizeImportedNotes,
+} from '@/services/security';
 import { storageService } from '@/services/storageService';
 
 interface CloudSyncPanelProps {
@@ -165,26 +169,29 @@ export function CloudSyncPanel({
         passphrase,
       });
 
+      const safeNotes = sanitizeImportedNotes(decrypted.notes);
+      const safeFolders = sanitizeImportedFolders(decrypted.tabFolders);
+
       await storageService.setState((prev) => {
         const existingNotes = new Map(prev.notes.map((n) => [n.id, n]));
-        for (const n of decrypted.notes || []) {
-          const cur = existingNotes.get(n.id);
-          if (!cur || n.updatedAt > cur.updatedAt) existingNotes.set(n.id, n);
-        }
-        const existingFolders = new Map(
-          prev.tabFolders.map((f) => [f.id, f])
-        );
-        for (const f of decrypted.tabFolders || []) {
-          const cur = existingFolders.get(f.id);
-          if (!cur || f.updatedAt > cur.updatedAt)
-            existingFolders.set(f.id, f);
-        }
-        return {
-          ...prev,
-          notes: Array.from(existingNotes.values()),
-          tabFolders: Array.from(existingFolders.values()),
-        };
-      });
+          for (const n of safeNotes) {
+            const cur = existingNotes.get(n.id);
+            if (!cur || n.updatedAt > cur.updatedAt) existingNotes.set(n.id, n);
+          }
+          const existingFolders = new Map(
+            prev.tabFolders.map((f) => [f.id, f])
+          );
+            for (const f of safeFolders) {
+              const cur = existingFolders.get(f.id);
+              if (!cur || f.updatedAt > cur.updatedAt)
+                existingFolders.set(f.id, f);
+            }
+            return {
+              ...prev,
+              notes: Array.from(existingNotes.values()),
+              tabFolders: Array.from(existingFolders.values()),
+            };
+          });
 
       onStatusMessage(
         `Decrypted & extracted ${decrypted.notes.length} note(s) and ${decrypted.tabFolders.length} folder(s)`
@@ -246,11 +253,10 @@ export function CloudSyncPanel({
             <button
               type="button"
               onClick={() => setEncryptionMode('email')}
-              className={`p-2 rounded border text-left transition ${
-                encryptionMode === 'email'
+              className={`p-2 rounded border text-left transition ${encryptionMode === 'email'
                   ? 'bg-slate-800 border-amber-400 text-slate-100'
                   : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700'
-              }`}
+                }`}
             >
               <div className="font-semibold text-[11px]">
                 Auto by Gmail
@@ -263,11 +269,10 @@ export function CloudSyncPanel({
             <button
               type="button"
               onClick={() => setEncryptionMode('passphrase')}
-              className={`p-2 rounded border text-left transition ${
-                encryptionMode === 'passphrase'
+              className={`p-2 rounded border text-left transition ${encryptionMode === 'passphrase'
                   ? 'bg-slate-800 border-amber-400 text-slate-100'
                   : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-700'
-              }`}
+                }`}
             >
               <div className="font-semibold text-[11px]">
                 Master Passphrase

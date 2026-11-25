@@ -5,6 +5,7 @@ import {
   parseYouTubeVideoId,
   seekCurrentYouTubeVideo,
 } from '@/services/contextCapture';
+import { isSafeHttpUrl } from '@/services/security';
 
 interface MarkdownPreviewProps {
   content: string;
@@ -56,20 +57,32 @@ function renderInline(text: string, palette: ThemePalette): React.ReactNode[] {
       const splitIdx = token.indexOf('](');
       const label = token.slice(1, splitIdx);
       const href = token.slice(splitIdx + 2, -1);
-      parts.push(
-        <a
-          key={key}
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => handleLinkClick(e, href)}
-          style={{ color: palette.id === 'dark' ? '#60A5FA' : '#1D4ED8' }}
-          className="underline decoration-1 underline-offset-2 hover:opacity-80 font-medium break-words"
-          title={href}
-        >
-          {label}
-        </a>
-      );
+      if (isSafeHttpUrl(href)) {
+        parts.push(
+          <a
+            key={key}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => handleLinkClick(e, href)}
+            style={{ color: palette.id === 'dark' ? '#60A5FA' : '#1D4ED8' }}
+            className="underline decoration-1 underline-offset-2 hover:opacity-80 font-medium break-words"
+            title={href}
+          >
+            {label}
+          </a>
+        );
+      } else {
+        parts.push(
+          <span
+            key={key}
+            className="opacity-70 underline decoration-dotted"
+            title="Blocked unsafe URL scheme"
+          >
+            {label}
+          </span>
+        );
+      }
     } else if (token.startsWith('`') && token.endsWith('`')) {
       parts.push(
         <code
